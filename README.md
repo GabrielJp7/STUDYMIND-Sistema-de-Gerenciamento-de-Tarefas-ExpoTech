@@ -1,0 +1,1 @@
+# STUDYMIND-Sistema-de-Gerenciamento-de-Tarefas-ExpoTech
