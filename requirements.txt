@@ -1,0 +1,527 @@
+Tecnologias Utilizadas
+
+| Tecnologia | Versão recomendada | Finalidade |
+|---|---|---|
+| Python | 3.8 ou superior | Linguagem principal do sistema |
+| MySQL | 8.0 ou superior | Banco de dados relacional |
+| mysql-connector-python | Última estável | Biblioteca de conexão Python ↔ MySQL |
+
+### Instalação da dependência
+
+```bash
+pip install mysql-connector-python
+```
+
+---
+
+## 3. Estrutura do Banco de Dados
+
+O sistema utiliza três tabelas no banco `studymind`:
+
+```
+tb_usuarios
+│
+├── usu_id (PK)
+├── usu_nome
+├── usu_email (UNIQUE)
+└── usu_senha
+
+tb_tarefas
+│
+├── taf_id (PK)
+├── usu_id (FK → tb_usuarios)
+├── taf_titulo
+├── taf_descricao
+├── taf_materia
+├── taf_dificuldade
+├── taf_tempo_estimado
+├── taf_prazo
+├── taf_prioridade
+├── taf_status
+└── taf_data_criacao
+
+tb_historico
+│
+├── hist_id (PK)
+├── taf_id (FK → tb_tarefas)
+├── hist_tarefa_id
+├── hist_data_conclusao
+└── hist_tempo_real
+```
+
+### Relacionamentos
+
+- Um **usuário** pode ter muitas **tarefas** (1:N)
+- Uma **tarefa** pode ter um registro no **histórico** quando concluída (1:1)
+
+---
+
+## 4. Como Executar
+
+**Passo 1:** Crie o banco de dados no MySQL:
+
+```sql
+CREATE DATABASE studymind;
+USE studymind;
+-- Execute o script de criação das tabelas
+```
+
+**Passo 2:** Ajuste as credenciais no arquivo `studymind.py`:
+
+```python
+DB_CONFIG = {
+    "host":     "localhost",
+    "user":     "root",
+    "password": "sua_senha_aqui",  # ← altere para sua senha do MySQL
+    "database": "studymind"
+}
+```
+
+**Passo 3:** Execute o sistema pelo terminal:
+
+```bash
+python studymind.py
+```
+
+---
+
+## 5. Arquitetura do Código
+
+O código segue o paradigma **procedural**, organizado exclusivamente em funções. Não há classes ou orientação a objetos. A estrutura é dividida em quatro blocos principais:
+
+```
+studymind.py
+│
+├── Configuração e Variáveis Globais
+│
+├── Funções Auxiliares
+│   └── conectar(), linha(), cabecalho(), pausar()
+│
+├── Módulo de Autenticação
+│   └── registrar_usuario(), fazer_login(), fazer_logout()
+│
+├── Módulo de Tarefas (CRUD)
+│   ├── CREATE → criar_tarefa()
+│   ├── READ   → listar_tarefas(), exibir_tarefas(), detalhar_tarefa()
+│   ├── UPDATE → editar_tarefa()
+│   └── DELETE → excluir_tarefa()
+│
+├── Módulo de Histórico
+│   └── registrar_historico(), ver_historico()
+│
+└── Sistema de Menus
+    └── menu_principal(), menu_tarefas()
+```
+
+---
+
+## 6. Configuração da Conexão
+
+```python
+DB_CONFIG = {
+    "host":     "localhost",
+    "user":     "root",
+    "password": "sua_senha_aqui",
+    "database": "studymind"
+}
+```
+
+> **Observação:** `DB_CONFIG` é um **dicionário** Python — uma estrutura que armazena dados no formato `chave: valor`. Ele centraliza todas as configurações de conexão em um único lugar, facilitando futuras alterações (como mudar o host ou o usuário) sem precisar modificar o código em vários pontos.
+
+---
+
+## 7. Variável de Sessão
+
+```python
+usuario_logado = None
+```
+
+> **Observação:** Esta variável global funciona como a "memória da sessão". Quando vale `None`, significa que nenhum usuário está logado. Após o login bem-sucedido, ela passa a guardar o dicionário completo do usuário retornado pelo banco (com id, nome, email etc.). Isso permite que todas as funções saibam quem está usando o sistema sem precisar perguntar novamente.
+
+---
+
+## 8. Funções Auxiliares
+
+Estas funções não se comunicam com o banco — servem apenas para organizar a interface no terminal.
+
+### `conectar()`
+
+```python
+def conectar():
+    return mysql.connector.connect(**DB_CONFIG)
+```
+
+> **Observação:** O operador `**` (double asterisk) "desempacota" o dicionário `DB_CONFIG`, passando cada par `chave: valor` como um argumento nomeado para a função `connect()`. É equivalente a escrever `connect(host="localhost", user="root", ...)`. Esta função é chamada no início de cada operação com o banco e a conexão é sempre encerrada ao final, evitando conexões abertas desnecessariamente.
+
+---
+
+### `linha()` e `cabecalho(titulo)`
+
+```python
+def linha():
+    print("-" * 50)
+
+def cabecalho(titulo):
+    linha()
+    print(f"  {titulo}")
+    linha()
+```
+
+> **Observação:** `"-" * 50` repete o caractere `-` cinquenta vezes, criando uma linha divisória visual. `cabecalho()` usa f-string (strings formatadas com `f"..."`) para inserir o título dinamicamente. Essas funções padronizam a aparência de todas as telas do sistema.
+
+---
+
+### `pausar()`
+
+```python
+def pausar():
+    input("\nPressione ENTER para continuar...")
+```
+
+> **Observação:** O retorno da função `input()` é ignorado aqui — ela é usada apenas para travar a execução até o usuário pressionar ENTER. Isso impede que o menu reapareça imediatamente após uma operação, dando tempo para o usuário ler o resultado.
+
+---
+
+## 9. Módulo de Autenticação
+
+### `registrar_usuario()`
+
+Responsável por criar um novo usuário no sistema.
+
+```python
+nome  = input("Nome: ").strip()
+email = input("E-mail: ").strip()
+senha = input("Senha: ").strip()
+
+if not nome or not email or not senha:
+    print("\n[ERRO] Todos os campos são obrigatórios.")
+    pausar()
+    return
+```
+
+> **Observação:** O método `.strip()` remove espaços em branco do início e do fim da string digitada, evitando que o usuário cadastre um nome como `"  João  "` por acidente. A condição `if not nome` é `True` quando a string está vazia (`""`), funcionando como validação básica de campos obrigatórios.
+
+```python
+try:
+    cursor.execute(
+        "INSERT INTO tb_usuarios (usu_nome, usu_email, usu_senha) VALUES (%s, %s, %s)",
+        (nome, email, senha)
+    )
+    conn.commit()
+
+except mysql.connector.errors.IntegrityError:
+    print("\n[ERRO] Este e-mail já está cadastrado.")
+
+finally:
+    cursor.close()
+    conn.close()
+```
+
+> **Observação — Uso de `%s` (Parâmetros Preparados):** Os valores nunca são inseridos diretamente na string SQL. O `%s` é um placeholder que o conector substitui com segurança. Isso previne ataques de **SQL Injection**, onde um usuário mal-intencionado poderia manipular a query digitando código SQL no campo de entrada.
+>
+> **Observação — `try/except/finally`:** O bloco `try` tenta executar o INSERT. Se o e-mail já existir no banco (pois a coluna tem `UNIQUE`), o MySQL lança um erro de integridade (`IntegrityError`), que é capturado pelo `except` e exibido como mensagem amigável. O bloco `finally` **sempre** executa, mesmo que ocorra erro, garantindo que a conexão com o banco seja fechada corretamente.
+>
+> **Observação — `conn.commit()`:** Operações de escrita no banco (INSERT, UPDATE, DELETE) precisam ser "confirmadas" com `commit()`. Sem isso, a alteração existe apenas em memória e é descartada quando a conexão é encerrada.
+
+---
+
+### `fazer_login()`
+
+```python
+def fazer_login():
+    global usuario_logado
+    ...
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute(
+        "SELECT * FROM tb_usuarios WHERE usu_email = %s AND usu_senha = %s",
+        (email, senha)
+    )
+    usuario = cursor.fetchone()
+
+    if usuario:
+        usuario_logado = usuario
+```
+
+> **Observação — `global usuario_logado`:** A palavra-chave `global` é necessária para modificar uma variável definida fora da função. Sem ela, Python criaria uma variável local com o mesmo nome, e a mudança não se propagaria para o restante do programa.
+>
+> **Observação — `cursor(dictionary=True)`:** Por padrão, o cursor retorna os resultados como tuplas (`(1, "João", ...)`). Com `dictionary=True`, cada linha vira um dicionário (`{"usu_id": 1, "usu_nome": "João", ...}`), tornando o acesso aos campos muito mais legível e seguro (pelo nome da coluna, não pela posição).
+>
+> **Observação — `fetchone()`:** Busca apenas a primeira linha do resultado. Como e-mail é único no banco, só pode existir um resultado. Se nenhum registro for encontrado, retorna `None`, e a condição `if usuario` será `False`.
+
+---
+
+### `fazer_logout()`
+
+```python
+def fazer_logout():
+    global usuario_logado
+    usuario_logado = None
+```
+
+> **Observação:** O logout é simplesmente "apagar" os dados da sessão, atribuindo `None` à variável global. Na próxima volta do loop do `menu_principal()`, o sistema voltará a exibir a tela de login.
+
+---
+
+## 10. Módulo de Tarefas (CRUD)
+
+### CREATE — `criar_tarefa()`
+
+```python
+dificuldade    = int(dificuldade)    if dificuldade.isdigit()    else None
+tempo_estimado = int(tempo_estimado) if tempo_estimado.isdigit() else None
+prioridade     = int(prioridade)     if prioridade.isdigit()     else None
+prazo          = prazo if prazo else None
+```
+
+> **Observação — Expressão Ternária:** A sintaxe `valor_a if condição else valor_b` é o equivalente de um `if/else` em uma única linha. Aqui, ela verifica se o campo digitado é um número inteiro válido (`.isdigit()`) antes de converter com `int()`. Se o campo estiver vazio ou contiver letras, atribui `None`, que o banco interpreta como ausência de valor (`NULL`).
+
+```python
+cursor.execute(
+    """INSERT INTO tb_tarefas
+       (..., taf_status, usu_id)
+       VALUES (%s, %s, ..., 'pendente', %s)""",
+    (usuario_logado["usu_id"], titulo, ...)
+)
+```
+
+> **Observação:** O status inicial `'pendente'` é definido diretamente na query SQL, não precisando de input do usuário. O `usu_id` é obtido da variável de sessão `usuario_logado`, garantindo que a tarefa seja associada automaticamente ao usuário que está logado.
+
+---
+
+### READ — `listar_tarefas(mostrar_todas=False)`
+
+```python
+def listar_tarefas(mostrar_todas=False):
+    if mostrar_todas:
+        cursor.execute(
+            "SELECT * FROM tb_tarefas WHERE usu_id = %s ORDER BY taf_prioridade DESC, taf_prazo ASC",
+            ...
+        )
+    else:
+        cursor.execute(
+            "SELECT * FROM tb_tarefas WHERE usu_id = %s AND taf_status = 'pendente' ...",
+            ...
+        )
+    return tarefas
+```
+
+> **Observação — Parâmetro padrão `mostrar_todas=False`:** Ao definir um valor padrão no parâmetro, a função pode ser chamada de duas formas: `listar_tarefas()` (mostra só pendentes) ou `listar_tarefas(mostrar_todas=True)` (mostra todas). Isso evita duplicar código.
+>
+> **Observação — Ordenação dupla:** `ORDER BY taf_prioridade DESC, taf_prazo ASC` ordena as tarefas primeiro pela prioridade mais alta e, em caso de empate, pela data de prazo mais próxima. Isso coloca automaticamente as tarefas mais urgentes no topo da lista.
+>
+> **Observação — Isolamento por usuário:** O filtro `WHERE usu_id = %s` garante que um usuário nunca veja as tarefas de outro, mesmo que ambos estejam cadastrados no mesmo banco.
+
+---
+
+### READ — `detalhar_tarefa()`
+
+```python
+id_tarefa = input("ID da tarefa: ").strip()
+
+if not id_tarefa.isdigit():
+    print("\n[ERRO] ID inválido.")
+    pausar()
+    return
+```
+
+> **Observação:** A validação com `.isdigit()` impede que o programa tente converter letras para inteiro, o que causaria um erro (`ValueError`) e quebraria a execução. É uma proteção essencial para entradas fornecidas pelo usuário.
+
+```python
+cursor.execute(
+    "SELECT * FROM tb_tarefas WHERE taf_id = %s AND usu_id = %s",
+    (int(id_tarefa), usuario_logado["usu_id"])
+)
+```
+
+> **Observação:** Mesmo sabendo o ID da tarefa, a query também filtra pelo `usu_id`. Isso impede que um usuário acesse ou manipule tarefas de outro usuário digitando o ID correto.
+
+---
+
+### UPDATE — `editar_tarefa()`
+
+```python
+titulo = input(f"Título [{t['taf_titulo']}]: ").strip()
+...
+novo_titulo = titulo if titulo else t["taf_titulo"]
+```
+
+> **Observação:** O valor atual do campo é exibido entre colchetes na pergunta (ex: `Título [Estudar Python]:`). Se o usuário pressionar ENTER sem digitar nada, a string ficará vazia e a expressão ternária manterá o valor original do banco (`t["taf_titulo"]`). Isso cria uma experiência de edição intuitiva onde só os campos alterados precisam ser preenchidos.
+
+```python
+if novo_status == "concluida" and t["taf_status"] != "concluida":
+    registrar_historico(int(id_tarefa))
+```
+
+> **Observação:** Esta condição verifica duas coisas ao mesmo tempo: o novo status é "concluida" **E** o status anterior não era "concluida". Isso evita registros duplicados no histórico caso o usuário salve a tarefa como concluída mais de uma vez.
+
+---
+
+### DELETE — `excluir_tarefa()`
+
+```python
+confirmacao = input(f"\nTem certeza que deseja excluir a tarefa {id_tarefa}? (s/n): ").strip().lower()
+
+if confirmacao != "s":
+    print("\n[CANCELADO] Nenhuma tarefa foi excluída.")
+    pausar()
+    return
+```
+
+> **Observação:** O `.lower()` converte a resposta para letras minúsculas, aceitando tanto `"S"` quanto `"s"`. Qualquer resposta diferente de `"s"` cancela a operação, tornando a exclusão um processo seguro com dupla confirmação.
+
+```python
+# Remove histórico vinculado antes de excluir a tarefa
+cursor.execute("DELETE FROM tb_historico WHERE taf_id = %s", (int(id_tarefa),))
+
+cursor.execute(
+    "DELETE FROM tb_tarefas WHERE taf_id = %s AND usu_id = %s",
+    (int(id_tarefa), usuario_logado["usu_id"])
+)
+linhas_afetadas = cursor.rowcount
+```
+
+> **Observação — Ordem de exclusão:** O histórico é deletado **antes** da tarefa porque existe uma chave estrangeira (FK) de `tb_historico` apontando para `tb_tarefas`. O MySQL não permite deletar um registro pai enquanto existirem registros filhos referenciando-o. Ignorar essa ordem causaria um erro de integridade referencial.
+>
+> **Observação — `cursor.rowcount`:** Retorna quantas linhas foram afetadas pela última query. Se for `0`, significa que nenhuma tarefa com aquele ID e `usu_id` foi encontrada (possível tentativa de deletar tarefa de outro usuário).
+
+---
+
+## 11. Módulo de Histórico
+
+### `registrar_historico(id_tarefa)`
+
+```python
+def registrar_historico(id_tarefa):
+    tempo = input("Tempo real gasto (em minutos, opcional): ").strip()
+    tempo_real = int(tempo) if tempo.isdigit() else None
+
+    cursor.execute(
+        "INSERT INTO tb_historico (hist_tarefa_id, hist_tempo_real, taf_id) VALUES (%s, %s, %s)",
+        (id_tarefa, tempo_real, id_tarefa)
+    )
+```
+
+> **Observação:** Esta função é chamada **automaticamente** dentro de `editar_tarefa()` quando o status muda para `"concluida"`, sem que o usuário precise ir em um menu separado. O campo `hist_data_conclusao` não precisa ser inserido manualmente pois o banco possui `DEFAULT CURRENT_TIMESTAMP`, preenchendo-o automaticamente com a data e hora atuais.
+
+---
+
+### `ver_historico()`
+
+```python
+cursor.execute(
+    """SELECT h.hist_id, t.taf_titulo, h.hist_data_conclusao, h.hist_tempo_real
+       FROM tb_historico h
+       JOIN tb_tarefas t ON t.taf_id = h.taf_id
+       WHERE t.usu_id = %s
+       ORDER BY h.hist_data_conclusao DESC""",
+    (usuario_logado["usu_id"],)
+)
+```
+
+> **Observação — JOIN:** O comando `JOIN` une duas tabelas em uma única consulta. Aqui, `tb_historico` é unida com `tb_tarefas` pela coluna `taf_id`, permitindo buscar o título da tarefa (que está em `tb_tarefas`) junto com os dados do histórico (que estão em `tb_historico`). Sem o JOIN, seriam necessárias duas queries separadas.
+>
+> **Observação — Aliases (`h` e `t`):** `FROM tb_historico h` define `h` como apelido para a tabela, e `tb_tarefas t` define `t`. Isso permite referenciar colunas das duas tabelas com clareza: `h.hist_id` (coluna da tabela histórico) e `t.taf_titulo` (coluna da tabela tarefas).
+
+---
+
+## 12. Sistema de Menus
+
+### `menu_principal()`
+
+```python
+def menu_principal():
+    while True:
+        ...
+        if opcao == "1":
+            fazer_login()
+            if usuario_logado:
+                menu_tarefas()
+                fazer_logout()
+        elif opcao == "2":
+            registrar_usuario()
+        elif opcao == "0":
+            print("\nAté logo!\n")
+            break
+        else:
+            print("\n[ERRO] Opção inválida.")
+```
+
+> **Observação — `while True`:** O loop infinito mantém o menu ativo até que o usuário escolha sair (opção `0`), quando o comando `break` encerra o laço. Esta é a estrutura padrão para menus interativos em sistemas de terminal.
+>
+> **Observação — Fluxo do login:** Após `fazer_login()`, o código verifica `if usuario_logado:` antes de abrir o menu de tarefas. Se o login falhou, `usuario_logado` permanece `None` e o sistema volta ao menu principal sem entrar no sistema. Quando o usuário sair do `menu_tarefas()`, `fazer_logout()` é chamado automaticamente, limpando a sessão.
+
+---
+
+### `menu_tarefas()`
+
+```python
+def menu_tarefas():
+    while True:
+        cabecalho(f"TAREFAS — {usuario_logado['usu_nome']}")
+        ...
+        if opcao == "1":
+            criar_tarefa()
+        elif opcao == "2":
+            exibir_tarefas()
+        elif opcao == "3":
+            detalhar_tarefa()
+        elif opcao == "4":
+            editar_tarefa()
+        elif opcao == "5":
+            excluir_tarefa()
+        elif opcao == "6":
+            ver_historico()
+        elif opcao == "0":
+            break
+```
+
+> **Observação:** O nome do usuário logado é exibido no cabeçalho usando `usuario_logado['usu_nome']`, personalizando a experiência. A opção `0` usa `break` para sair do loop e retornar ao `menu_principal()`, que então chama `fazer_logout()`.
+
+---
+
+## 13. Fluxo de Navegação
+
+```
+Inicialização
+      │
+      ▼
+menu_principal()  ──────────────────────────────────┐
+      │                                              │
+      ├── [1] fazer_login()                          │
+      │         │                                    │
+      │         ▼ (login OK)                         │
+      │   menu_tarefas()                             │
+      │         │                                    │
+      │         ├── [1] criar_tarefa()               │
+      │         ├── [2] exibir_tarefas()             │
+      │         │         └── listar_tarefas()       │
+      │         ├── [3] detalhar_tarefa()            │
+      │         ├── [4] editar_tarefa()              │
+      │         │         └── registrar_historico()  │
+      │         │             (automático se concluída)│
+      │         ├── [5] excluir_tarefa()             │
+      │         ├── [6] ver_historico()              │
+      │         └── [0] fazer_logout() ─────────────┘
+      │
+      ├── [2] registrar_usuario()
+      │
+      └── [0] Encerrar programa
+```
+
+---
+
+## 14. Boas Práticas Aplicadas
+
+| Prática | Onde é aplicada |
+|---|---|
+| Parâmetros preparados (`%s`) | Em todas as queries SQL — previne SQL Injection |
+| Fechamento de conexões | `cursor.close()` e `conn.close()` em todas as funções |
+| `try/except/finally` | No cadastro de usuário para tratar erro de e-mail duplicado |
+| Validação de entrada | `.strip()`, `.isdigit()`, verificação de campos vazios |
+| Isolamento por usuário | Todas as queries de tarefa filtram por `usu_id` |
+| Expressão ternária | Conversão segura de campos numéricos opcionais |
+| Parâmetro padrão | `listar_tarefas(mostrar_todas=False)` evita duplicação de código |
+| `dictionary=True` no cursor | Acesso a colunas pelo nome, não pela posição |
+| `conn.commit()` explícito | Confirma alterações no banco após operações de escrita |
+| Exclusão em ordem correta | Histórico deletado antes da tarefa, respeitando FKs |
